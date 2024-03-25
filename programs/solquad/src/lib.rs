@@ -1,9 +1,10 @@
 use anchor_lang::prelude::*;
 
-declare_id!("5sFUqUTjAMJARrEafMX8f4J1LagdUQ9Y8TR8HwGNHkU8");
+declare_id!("7iKx1QyUrbgDBRnQchsjb439a9cUXapzeRL5sSdaVR2E");
 
 #[program]
 pub mod solquad {
+
     use super::*;
 
     pub fn initialize_escrow(ctx: Context<InitializeEscrow>, amount: u64) -> Result<()> {
@@ -32,6 +33,7 @@ pub mod solquad {
         project_account.votes_count = 0;
         project_account.voter_amount = 0;
         project_account.distributed_amt = 0;
+        project_account.is_in_pool = false;
 
         Ok(())
     }
@@ -39,16 +41,23 @@ pub mod solquad {
     pub fn add_project_to_pool(ctx: Context<AddProjectToPool>) -> Result<()> {
         let escrow_account = &mut ctx.accounts.escrow_account;
         let pool_account = &mut ctx.accounts.pool_account;
-        let project_account = &ctx.accounts.project_account;
+        let project_account = &mut ctx.accounts.project_account;
 
-        pool_account.projects.push(
-            project_account.project_owner
+        require!(
+            !project_account.is_in_pool,
+            SolquadError::ProjectAlreadyInPool
         );
+
+        project_account.is_in_pool = true;
+        // needs to be exited in order to ensure it writes the data
+        project_account.exit(&crate::ID)?;
+
+        pool_account.projects.push(project_account.project_owner);
         pool_account.total_projects += 1;
 
-        escrow_account.project_reciever_addresses.push(
-            project_account.project_owner
-        );
+        escrow_account
+            .project_reciever_addresses
+            .push(project_account.project_owner);
 
         Ok(())
     }
@@ -59,12 +68,12 @@ pub mod solquad {
 
         for i in 0..pool_account.projects.len() {
             if pool_account.projects[i] == project_account.project_owner {
-                project_account.votes_count += 1;
-                project_account.voter_amount += amount;
+                project_account.votes_count = project_account.votes_count.saturating_add(1);
+                project_account.voter_amount = project_account.voter_amount.saturating_add(amount);
             }
         }
 
-        pool_account.total_votes += 1;
+        pool_account.total_votes = pool_account.total_votes.saturating_add(1);
 
         Ok(())
     }
@@ -73,7 +82,7 @@ pub mod solquad {
         let escrow_account = &mut ctx.accounts.escrow_account;
         let pool_account = &mut ctx.accounts.pool_account;
         let project_account = &mut ctx.accounts.project_account;
-  
+
         for i in 0..escrow_account.project_reciever_addresses.len() {
             let distributable_amt: u64;
             let votes: u64;
@@ -86,7 +95,16 @@ pub mod solquad {
             }
 
             if votes != 0 {
-                distributable_amt = (votes / pool_account.total_votes) * escrow_account.creator_deposit_amount as u64;
+                let vote_ratio;
+                match votes.checked_div(pool_account.total_votes) {
+                    Some(v) => vote_ratio = v,
+                    None => return Err(SolquadError::VotingDiscrepancy.into()),
+                }
+                match vote_ratio.checked_mul(escrow_account.creator_deposit_amount) {
+                    Some(v) => distributable_amt = v,
+                    None => return Err(SolquadError::DistributionError.into()),
+                    //
+                }
             } else {
                 distributable_amt = 0;
             }
@@ -185,7 +203,7 @@ pub struct Escrow {
     pub project_reciever_addresses: Vec<Pubkey>,
 }
 
-// Pool for each project 
+// Pool for each project
 #[account]
 pub struct Pool {
     pub pool_creator: Pubkey,
@@ -202,6 +220,7 @@ pub struct Project {
     pub votes_count: u64,
     pub voter_amount: u64,
     pub distributed_amt: u64,
+    pub is_in_pool: bool,
 }
 
 // Voters voting for the project
@@ -209,5 +228,16 @@ pub struct Project {
 pub struct Voter {
     pub voter: Pubkey,
     pub voted_for: Pubkey,
-    pub token_amount: u64
+    pub token_amount: u64,
+}
+
+// Errors
+#[error_code]
+pub enum SolquadError {
+    #[msg("Project is already in a pool")]
+    ProjectAlreadyInPool,
+    #[msg("Voting discrepancy")]
+    VotingDiscrepancy,
+    #[msg("Distribution Error")]
+    DistributionError,
 }

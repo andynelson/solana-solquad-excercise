@@ -1,22 +1,23 @@
 [features]
 seeds = false
 skip-lint = false
+
 [programs.localnet]
-solquad = "5sFUqUTjAMJARrEafMX8f4J1LagdUQ9Y8TR8HwGNHkU8"
+solquad = "7iKx1QyUrbgDBRnQchsjb439a9cUXapzeRL5sSdaVR2E"
 
 [programs.devnet]
-solquad = "5sFUqUTjAMJARrEafMX8f4J1LagdUQ9Y8TR8HwGNHkU8"
+solquad = "7iKx1QyUrbgDBRnQchsjb439a9cUXapzeRL5sSdaVR2E"
 
-[registry]
-url = "https://api.apr.dev"
+# [registry]
+# url = "https://api.apr.dev"
 
-[provider.localnet]
-cluster = "Localnet"
-wallet = "/home/agathokako/.config/solana/id.json"
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
 
-[provider.devnet]
-cluster = "Localnet"
-wallet = "/home/agathokako/.config/solana/id.json"
+# [provider.devnet]
+# cluster = "Localnet"
+# wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
